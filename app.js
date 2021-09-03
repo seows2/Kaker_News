@@ -6,6 +6,7 @@ const NEWS_URL = (currentPage) =>
 const CONTENT_URL = (id) => `https://api.hnpwa.com/v0/item/${id}.json`;
 const store = {
   currentPage: 1,
+  feeds: [],
 };
 
 function init() {
@@ -13,8 +14,16 @@ function init() {
   setEvent();
 }
 
+function makeFeed(feeds) {
+  return feeds.map((feed) => ({ ...feed, read: false }));
+}
+
 async function newsFeeds(currentPage) {
-  const newsFeeds = await getURLdata(NEWS_URL(currentPage));
+  let newsFeeds = store.feeds;
+
+  if (newsFeeds.length === 0) {
+    newsFeeds = store.feeds = makeFeed(await getURLdata(NEWS_URL(currentPage)));
+  }
 
   Container.innerHTML = `
     <div class="bg-gray-600 min-h-screen">
@@ -44,8 +53,10 @@ async function newsFeeds(currentPage) {
         <div class="p-4 text-2xl text-gray-700">
         ${newsFeeds
           .map(
-            ({ id, user, points, time_ago, title, comments_count }) => `
-            <div class="p-6 bg-white mt-6 rounded-lg shadow-md transition-colors duration-500 hover:bg-green-100">
+            ({ id, user, points, time_ago, title, comments_count, read }) => `
+            <div class="p-6 ${
+              read ? "bg-gray-300" : "bg-white"
+            } mt-6 rounded-lg shadow-md transition-colors duration-500 hover:bg-green-100">
                 <div class="flex">
                     <div class="flex-auto">
                         <a href="#/show/${id}">${title}</a>
@@ -75,12 +86,12 @@ const setEvent = () => {
 };
 
 async function newsDetail() {
-  const makeComment = (comments) => {
+  const makeComment = (comments, called = 0) => {
     const commentsString = [];
 
     for (const comment of comments) {
       commentsString.push(`
-        <div style="padding-left: 40px;" class="mt-4">
+        <div style="padding-left: ${called * 40}px;" class="mt-4">
           <div class="text-gray-400">
             <i class="fa fa-sort-up mr-2"></i>
             <strong>${comment.user}</strong> ${comment.time_ago}
@@ -90,7 +101,7 @@ async function newsDetail() {
       `);
 
       if (comment.comments.length > 0) {
-        commentsString.push(makeComment(comment.comments));
+        commentsString.push(makeComment(comment.comments, called + 1));
       }
     }
 
@@ -99,6 +110,9 @@ async function newsDetail() {
 
   const id = location.hash.substr(7);
   const newsContents = await getURLdata(CONTENT_URL(id));
+
+  const target = store.feeds.find((feed) => feed.id === Number(id));
+  target.read = true;
 
   Container.innerHTML = `
     <div class="bg-gray-600 min-h-screen pb-8">
