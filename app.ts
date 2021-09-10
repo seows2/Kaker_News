@@ -32,12 +32,68 @@ interface NewsComment extends News {
 const Container: HTMLElement | null = document.getElementById("root");
 const NEWS_URL = (currentPage: number) =>
   `https://api.hnpwa.com/v0/news/${currentPage}.json`;
-const CONTENT_URL = (id: number) => `https://api.hnpwa.com/v0/item/${id}.json`;
-
+const CONTENT_URL = (id: string) => `https://api.hnpwa.com/v0/item/${id}.json`;
 const store: Store = {
   currentPage: 1,
   feeds: [],
 };
+
+function applyApiMixins(targetClass: any, baseClasses: any[]): void {
+  baseClasses.forEach(baseClass => {
+    Object.getOwnPropertyNames(baseClass.prototype).forEach(name => {
+      const descriptor = Object.getOwnPropertyDescriptor(baseClass.prototype, name);
+
+      if(descriptor) {
+        Object.defineProperty(targetClass.prototype, name, descriptor)
+      }
+    })
+  });
+}
+
+class NewsFeedView {
+  constructor() {
+    const api = new NewsFeedApi()
+    let newsFeeds: NewsFeed[] = store.feeds;
+  
+  
+      newsFeeds = store.feeds = makeFeed(api.getData());
+
+  }
+
+  render(): void {
+
+  }
+}
+
+class Api {
+  getRequest<AjaxResponse>(url: string): AjaxResponse {
+    const ajax = new XMLHttpRequest()
+    ajax.open("GET", url, false);
+    ajax.send();
+
+    return JSON.parse(ajax.response)
+  }
+}
+
+class NewsFeedApi {
+  getData(): NewsFeed[] {
+    return this.getRequest<NewsFeed[]>(NEWS_URL(store.currentPage));
+  }
+}
+
+class NewsDetailApi {
+  getData(id: string): NewsDetail {
+    return this.getRequest<NewsDetail>(CONTENT_URL(id));
+  }
+}
+
+interface NewsFeedApi extends Api {}
+interface NewsDetailApi extends Api {}
+
+applyApiMixins(NewsFeedApi, [Api]);
+applyApiMixins(NewsDetailApi, [Api]);
+
+
 
 function init() {
   newsFeeds(1);
@@ -54,69 +110,7 @@ function updateView(html: string): void {
   }
 }
 
-async function newsFeeds(currentPage: number) {
-  let newsFeeds: NewsFeed[] = store.feeds;
-
-  if (newsFeeds.length === 0) {
-    newsFeeds = store.feeds = makeFeed(await getURLdata(NEWS_URL(currentPage)));
-  }
-
-  const template = `
-      <div class="bg-gray-600 min-h-screen">
-          <div class="bg-white text-xl">
-                  <div class="mx-auto px-4">
-                      <div class="flex justify-between items-center py-6">
-                          <div class="flex justify-start">
-                              <h1 class="font-extrabold">Kacker News</h1>
-                          </div>
-                          <div class="items-center justify-end">
-                              <a href="#/page/${
-                                store.currentPage > 1 ? store.currentPage - 1 : 1
-                              }" class="text-gray-500">
-                                  이전
-                              </a>
-                              <a href="#/page/${
-                                store.currentPage < 10
-                                  ? store.currentPage + 1
-                                  : 10
-                              }" class="text-gray-500 ml-4">
-                                  다음
-                              </a>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          <div class="p-4 text-2xl text-gray-700">
-          ${newsFeeds
-            .map(
-              ({ id, user, points, time_ago, title, comments_count, read }) => `
-              <div class="p-6 ${
-                read ? "bg-gray-300" : "bg-white"
-              } mt-6 rounded-lg shadow-md transition-colors duration-500 hover:bg-green-100">
-                  <div class="flex">
-                      <div class="flex-auto">
-                          <a href="#/show/${id}">${title}</a>
-                      </div>
-                      <div class="text-center text-sm">
-                          <div class="w-10 text-white bg-green-300 rounded-lg px-0 py-2">${comments_count}</div>
-                      </div>
-                  </div>
-                  <div class="flex mt-3">
-                      <div class="grid grid-cols-3 text-sm text-gray-500">
-                          <div><i class="fas fa-user mr-1"></i>${user}</div>
-                          <div><i class="fas fa-heart mr-1"></i>${points}</div>
-                          <div><i class="fas fa-clock mr-1"></i>${time_ago}</div>
-                      </div>
-                  </div>
-              </div>
-            `
-            )
-            .join("")}
-          </div>
-      </div>
-    `;
-    
-    updateView(template)
+function newsFeeds(currentPage: number) {
   
 }
 
@@ -148,7 +142,9 @@ async function newsDetail() {
   };
 
   const id = location.hash.substr(7);
-  const newsContents = await getURLdata(CONTENT_URL(Number(id)));
+
+  const api = new NewsDetailApi()
+  const newsContents = api.getData(id);
 
   const target = store.feeds.find((feed) => feed.id === Number(id));
   if(target){
@@ -188,9 +184,6 @@ async function newsDetail() {
 
 }
 
-function getURLdata(url: string) {
-  return fetch(url).then((res) => res.json());
-}
 
 function router() {
   const routerPath = location.hash;
