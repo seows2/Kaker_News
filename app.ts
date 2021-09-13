@@ -29,10 +29,16 @@ interface NewsComment extends News {
   readonly level: number;
 }
 
+interface RouteInfo {
+  path: string;
+  page: View;
+}
+
 const Container: HTMLElement | null = document.getElementById("root");
 const NEWS_URL = (currentPage: number) =>
   `https://api.hnpwa.com/v0/news/${currentPage}.json`;
 const CONTENT_URL = (id: string) => `https://api.hnpwa.com/v0/item/${id}.json`;
+
 const store: Store = {
   currentPage: 1,
   feeds: [],
@@ -50,10 +56,11 @@ function applyApiMixins(targetClass: any, baseClasses: any[]): void {
   });
 }
 
-class View {
-  template: string;
-  container: HTMLElement;
-  htmlList: string[]; 
+abstract class View {
+  private template: string;
+  private renderTemplate: string;
+  private container: HTMLElement;
+  private htmlList: string[]; 
   
   constructor(containerId: string, template: string) {
     const containerElement = document.getElementById(containerId);
@@ -64,25 +71,39 @@ class View {
 
     this.container = containerElement;
     this.template = template;
+    this.renderTemplate = template;
     this.htmlList = [];
   }
 
-  updateView(html: string): void {
-      this.container.innerHTML = html
+  protected updateView(): void {
+      this.container.innerHTML = this.renderTemplate;
+      this.renderTemplate = this.template;
   }
 
-  addHtml(htmlString: string): void {
+  protected addHtml(htmlString: string): void {
     this.htmlList.push(htmlString);
   }
 
-  getHtml(): string {
-    return this.htmlList.join("");
+  protected getHtml(): string {
+    const snapshot = this.htmlList.join("");
+    this.clearHtmlList();
+    return snapshot;
   }
+
+  protected setTemplateData(key: string, value:string): void {
+    this.renderTemplate = this.renderTemplate.replace(`{{__${key}__}}`, value);
+  }
+
+  private clearHtmlList(): void {
+    this.htmlList = []
+  }
+
+  abstract render(): void;
 }
 
 class NewsFeedView extends View{
-  api: NewsFeedApi;
-  feeds: NewsFeed[];
+  private api: NewsFeedApi;
+  private feeds: NewsFeed[];
 
   constructor(containerId: string) {
     const template = `
@@ -94,16 +115,10 @@ class NewsFeedView extends View{
                             <h1 class="font-extrabold">Kacker News</h1>
                         </div>
                         <div class="items-center justify-end">
-                            <a href="#/page/${
-                              store.currentPage > 1 ? store.currentPage - 1 : 1
-                            }" class="text-gray-500">
+                            <a href="#/page/{{__prev_page__}}" class="text-gray-500">
                                 이전
                             </a>
-                            <a href="#/page/${
-                              store.currentPage < 10
-                                ? store.currentPage + 1
-                                : 10
-                            }" class="text-gray-500 ml-4">
+                            <a href="#/page/{{__next_page__}}" class="text-gray-500 ml-4">
                                 다음
                             </a>
                         </div>
@@ -111,18 +126,25 @@ class NewsFeedView extends View{
                 </div>
             </div>
         <div class="p-4 text-2xl text-gray-700">
+            {{__news_feed__}}
         </div>
     </div>
   `;
     super(containerId, template);
-    
-    this.api = new NewsFeedApi()
-    this.feeds = store.feeds ?? this.makeFeed();
-
+      
+    this.api = new NewsFeedApi(NEWS_URL(store.currentPage))
+    this.feeds = store.feeds = this.api.getData();
+    this.makeFeed()
     
   }
-
+  
   render(): void {
+    store.currentPage = Number(location.hash.substr(7) || 1);
+    
+    this.api = new NewsFeedApi(NEWS_URL(store.currentPage))
+      this.feeds = store.feeds = this.api.getData();
+      this.makeFeed()
+    
     this.feeds
     .forEach(
       ({ id, user, points, time_ago, title, comments_count, read }) => {
@@ -148,20 +170,57 @@ class NewsFeedView extends View{
         </div>
       `)}
     )
+
+    this.setTemplateData("news_feed", this.getHtml())
+    this.setTemplateData("prev_page",  String(store.currentPage > 1 ? store.currentPage - 1 : 1));
+    this.setTemplateData("next_page",  String(store.currentPage < 10 ? store.currentPage + 1 : 10));
+
+    this.updateView()
   }
 
 
-  makeFeed() :void {
-    this.feeds = store.feeds = this.feeds.map((feed) => ({ ...feed, read: false }));
+  makeFeed(): void {
+    this.feeds = this.feeds.map((feed) => ({ ...feed, read: false }));
   }
 }
 
 class NewsDetailView extends View{
-  makeComment(comments: NewsComment[]): string {
-    const commentsString = [];
 
+  constructor(containerId: string) {
+    const template = `
+    <div class="bg-gray-600 min-h-screen pb-8">
+      <div class="bg-white text-xl">
+        <div class="mx-auto px-4">
+          <div class="flex justify-between items-center py-6">
+            <div class="flex justify-start">
+              <h1 class="font-extrabold">Kacker News</h1>
+            </div>
+            <div class="items-center justify-end">
+              <a href"#/page/{{__currentPage__}}" class="text-gray-500">
+                <i class="fa fa-times"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-full border rouned-xl bg-white m-6 p-4">
+        <h2>{{__title__}}</h2>
+        <div class="text-gray-400 h-20">
+          {{__content__}}
+        </div>
+
+        {{__comments__}}
+      </div>
+    </div>  
+  `;
+
+  super(containerId, template)
+  }
+
+  makeComment(comments: NewsComment[]): string {
     for (const comment of comments) {
-      commentsString.push(`
+      this.addHtml(`
         <div style="padding-left: ${comment.level * 40}px;" class="mt-4">
           <div class="text-gray-400">
             <i class="fa fa-sort-up mr-2"></i>
@@ -172,75 +231,95 @@ class NewsDetailView extends View{
       `);
 
       if (comment.comments.length > 0) {
-        commentsString.push(this.makeComment(comment.comments));
+        this.addHtml(this.makeComment(comment.comments));
       }
     }
 
-    return commentsString.join("");
+    return this.getHtml()
   };
 
   render(): void {
     const id = location.hash.substr(7);
   
-    const api = new NewsDetailApi()
-    const newsContents = api.getData(id);
+    const api = new NewsDetailApi(CONTENT_URL(id))
+    const newsDetail = api.getData(id);
   
     const target = store.feeds.find((feed) => feed.id === Number(id));
     if(target){
       target.read = true;
     }
 
-    const template = `
-    <div class="bg-gray-600 min-h-screen pb-8">
-      <div class="bg-white text-xl">
-        <div class="mx-auto px-4">
-          <div class="flex justify-between items-center py-6">
-            <div class="flex justify-start">
-              <h1 class="font-extrabold">Kacker News</h1>
-            </div>
-            <div class="items-center justify-end">
-              <a href"#/page/${store.currentPage}" class="text-gray-500">
-                <i class="fa fa-times"></i>
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <div class="h-full border rouned-xl bg-white m-6 p-4">
-        <h2>${newsContents.title}</h2>
-        <div class="text-gray-400 h-20">
-          ${newsContents.content}
-        </div>
+    this.setTemplateData("comments", this.makeComment(newsDetail.comments));
+    this.setTemplateData("currentPage", String(store.currentPage));
+    this.setTemplateData("title", newsDetail.title);
+    this.setTemplateData("content", newsDetail.content);
 
-        ${this.makeComment(newsContents.comments)}
-      </div>
-    </div>  
-  `;
+    this.updateView()
+  }
+}
 
-  this.updateView(template)
+class Router {
+  routeTable: RouteInfo[];
+  defaultRoute: RouteInfo | null;
+
+  constructor() {
+    window.addEventListener("hashchange", this.route.bind(this));
+    
+    this.routeTable = [];
+    this.defaultRoute = null;
+  }
+  
+  setDefaultPage(page: View): void {
+    this.defaultRoute = {path: "", page};
+  }
+  
+  addRoutePath(path: string, page: View): void{
+    this.routeTable.push({ path, page });
+  }
+  
+  route() {
+    const routerPath = location.hash;
+
+    if(routerPath === "" && this.defaultRoute) {
+      this.defaultRoute.page.render();
+    }
+    
+    for (const routeInfo of this.routeTable) {
+      if(routerPath.indexOf(routeInfo.path) >= 0) {
+        routeInfo.page.render();
+        break;
+      }
+    }
   }
 }
 
 class Api {
-  getRequest<AjaxResponse>(url: string): AjaxResponse {
-    const ajax = new XMLHttpRequest()
-    ajax.open("GET", url, false);
-    ajax.send();
+  ajax: XMLHttpRequest;
+  url: string;
 
-    return JSON.parse(ajax.response)
+  constructor(url: string) {
+    this.ajax = new XMLHttpRequest();
+    this.url = url;
+  }
+
+  getRequest<AjaxResponse>(): AjaxResponse {
+    this.ajax.open("GET", this.url, false);
+    this.ajax.send();
+
+    return JSON.parse(this.ajax.response)
   }
 }
 
-class NewsFeedApi {
+class NewsFeedApi extends Api{
   getData(): NewsFeed[] {
-    return this.getRequest<NewsFeed[]>(NEWS_URL(store.currentPage));
+    return this.getRequest<NewsFeed[]>();
   }
 }
 
-class NewsDetailApi {
+class NewsDetailApi extends Api{
   getData(id: string): NewsDetail {
-    return this.getRequest<NewsDetail>(CONTENT_URL(id));
+    return this.getRequest<NewsDetail>();
   }
 }
 
@@ -253,33 +332,14 @@ applyApiMixins(NewsDetailApi, [Api]);
 
 
 function init() {
-  newsFeeds(1);
-  setEvent();
-}
-
-function newsFeeds(currentPage: number) {
+  const router: Router = new Router();
+  const newsFeedView = new NewsFeedView("root");
+  const newsDetailView = new NewsDetailView("root");
   
+  router.setDefaultPage(newsFeedView);
+
+  router.addRoutePath("/page/", newsFeedView);
+  router.addRoutePath("/show/", newsDetailView);
+
+  router.route();
 }
-
-const setEvent = () => {
-  window.addEventListener("hashchange", router);
-};
-
-async function newsDetail() {
-  
-}
-
-
-function router() {
-  const routerPath = location.hash;
-  if (routerPath === "") {
-    newsFeeds(1);
-  } else if (routerPath.indexOf("#/page/") >= 0) {
-    store.currentPage = Number(routerPath.substr(7));
-    newsFeeds(store.currentPage);
-  } else {
-    newsDetail();
-  }
-}
-
-
