@@ -2,52 +2,47 @@ import { NewsDetail, NewsFeed } from "../types";
 
 
 class Api {
-    ajax: XMLHttpRequest;
+    xhr: XMLHttpRequest;
     url: string;
   
     constructor(url: string) {
-      this.ajax = new XMLHttpRequest();
+      this.xhr = new XMLHttpRequest();
       this.url = url;
     }
   
-    getRequest<AjaxResponse>(): AjaxResponse {
-      this.ajax.open("GET", this.url, false);
-      this.ajax.send();
-  
-      return JSON.parse(this.ajax.response)
+    getRequestWithXHR<xhrResponse>(cb: (data: xhrResponse) => void): void {
+      this.xhr.open("GET", this.url);
+      this.xhr.addEventListener("load", () => {
+          cb(JSON.parse(this.xhr.response) as xhrResponse)
+      })
+      this.xhr.send();
     }
+
+    async request<AjaxResponse>(): Promise<AjaxResponse> {
+       const response = await fetch(this.url);
+
+       return await response.json() as AjaxResponse;
+      }
+
   }
   
   class NewsFeedApi extends Api{
-    getData(): NewsFeed[] {
-      return this.getRequest<NewsFeed[]>();
+      constructor(url: string) {
+          super(url);
+      }
+
+    async getData(): Promise<NewsFeed[]> {
+        return this.request<NewsFeed[]>();
     }
   }
   
   class NewsDetailApi extends Api{
-    getData(id: string): NewsDetail {
-      return this.getRequest<NewsDetail>();
+      constructor(url: string) {
+          super(url);
+      }
+      async getData(): Promise<NewsDetail> {
+        return this.request<NewsDetail>();
     }
   }
-
-  function applyApiMixins(targetClass: any, baseClasses: any[]): void {
-    baseClasses.forEach(baseClass => {
-      Object.getOwnPropertyNames(baseClass.prototype).forEach(name => {
-        const descriptor = Object.getOwnPropertyDescriptor(baseClass.prototype, name);
-  
-        if(descriptor) {
-          Object.defineProperty(targetClass.prototype, name, descriptor)
-        }
-      })
-    });
-  }
-  
-  
-  
-  interface NewsFeedApi extends Api {}
-  interface NewsDetailApi extends Api {}
-  
-  applyApiMixins(NewsFeedApi, [Api]);
-  applyApiMixins(NewsDetailApi, [Api]);
   
   export { Api, NewsFeedApi, NewsDetailApi }

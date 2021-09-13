@@ -1,7 +1,7 @@
 import { NEWS_URL } from "../config";
 import { NewsFeedApi } from "../core/api";
 import View from "../core/view";
-import { NewsFeed } from "../types";
+import { NewsFeed, NewsStore } from "../types";
 
 const template = `
 <div class="bg-gray-600 min-h-screen">
@@ -30,35 +30,26 @@ const template = `
 
 class NewsFeedView extends View{
     private api: NewsFeedApi;
-    private feeds: NewsFeed[];
+    private store: NewsStore;
   
-    constructor(containerId: string) {
+    constructor(containerId: string, store: NewsStore) {
       super(containerId, template);
         
-      this.api = new NewsFeedApi(NEWS_URL(window.store.currentPage))
-      this.feeds = window.store.feeds = this.api.getData();
-      this.makeFeed()
-      
+      this.store = store;
+      this.api = new NewsFeedApi(NEWS_URL(this.store.currentPage));
     }
     
-    render(): void {
+    async render(): Promise<void> {
       const currentHashPage = Number(location.hash.substr(7) || 1);
       
-      if(currentHashPage !== window.store.currentPage) {
-          window.store.currentPage = currentHashPage;
-          this.api = new NewsFeedApi(NEWS_URL(window.store.currentPage))
-          this.feeds = window.store.feeds = this.api.getData();
-          this.makeFeed()
-      } else {
-        this.feeds = window.store.feeds
-      }
-      
-      this.feeds
-      .forEach(
-        ({ id, user, points, time_ago, title, comments_count, read }) => {
+      this.store.currentPage = currentHashPage;
+      this.api = new NewsFeedApi(NEWS_URL(this.store.currentPage));
+    this.store.setFeeds(await this.api.getData());
+      this.store.getAllFeeds().forEach(
+      ({ id, user, points, time_ago, title, comments_count, read }) => {
           this.addHtml(`
           <div class="p-6 ${
-            read ? "bg-gray-300" : "bg-white"
+          read ? "bg-gray-300" : "bg-white"
           } mt-6 rounded-lg shadow-md transition-colors duration-500 hover:bg-green-100">
               <div class="flex">
                   <div class="flex-auto">
@@ -76,20 +67,16 @@ class NewsFeedView extends View{
                   </div>
               </div>
           </div>
-        `)}
+      `)}
       )
-  
+      
       this.setTemplateData("news_feed", this.getHtml())
-      this.setTemplateData("prev_page",  String(window.store.currentPage > 1 ? window.store.currentPage - 1 : 1));
-      this.setTemplateData("next_page",  String(window.store.currentPage < 10 ? window.store.currentPage + 1 : 10));
-  
+      this.setTemplateData("prev_page",  String(this.store.prevPage));
+      this.setTemplateData("next_page",  String(this.store.nextPage));
+      
       this.updateView()
-    }
-  
-  
-    makeFeed(): void {
-      this.feeds = this.feeds.map((feed) => ({ ...feed, read: false }));
-    }
+}
+
   }
 
   export default NewsFeedView;

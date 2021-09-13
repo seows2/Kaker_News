@@ -1,28 +1,17 @@
 import Router from "./core/router";
 import NewsDetailView from "./page/news-detail-view";
 import NewsFeedView from "./page/news-feed-view";
-import { Store } from "./types";
+import Store from "./store";
+import { NewsStore } from "./types";
 
 document.addEventListener("DOMContentLoaded", init);
 
 
-export const store: Store = {
-  currentPage: 1,
-  feeds: [],
-};
-
-declare global {
-  interface Window {
-    store: Store;
-  }
-}
-
-window.store = store;
-
 function init() {
+  const store: NewsStore = new Store();
   const router: Router = new Router();
-  const newsFeedView = new NewsFeedView("root");
-  const newsDetailView = new NewsDetailView("root");
+  const newsFeedView = new NewsFeedView("root", store);
+  const newsDetailView = new NewsDetailView("root", store);
   
   router.setDefaultPage(newsFeedView);
 

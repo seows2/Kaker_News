@@ -1,7 +1,7 @@
 import { CONTENT_URL } from "../config";
 import { NewsDetailApi } from "../core/api";
 import View from "../core/view";
-import { NewsComment } from "../types";
+import { NewsComment, NewsDetail, NewsStore } from "../types";
 
 const template = `
 <div class="bg-gray-600 min-h-screen pb-8">
@@ -32,9 +32,11 @@ const template = `
 `;
 
 class NewsDetailView extends View{
+    private store: NewsStore;
 
-    constructor(containerId: string) {
+    constructor(containerId: string, store: NewsStore) {
         super(containerId, template)
+        this.store = store;
     }
   
     makeComment(comments: NewsComment[]): string {
@@ -57,25 +59,18 @@ class NewsDetailView extends View{
       return this.getHtml()
     };
   
-    render(): void {
+    async render(): Promise<void> {
       const id = location.hash.substr(7);
     
       const api = new NewsDetailApi(CONTENT_URL(id))
-      const newsDetail = api.getData(id);
-    
-      const target = window.store.feeds.find((feed) => feed.id === Number(id));
-      if(target){
-        target.read = true;
-      }
 
-      console.log(target);
-      
-  
-  
-      this.setTemplateData("comments", this.makeComment(newsDetail.comments));
-      this.setTemplateData("currentPage", String(window.store.currentPage));
-      this.setTemplateData("title", newsDetail.title);
-      this.setTemplateData("content", newsDetail.content);
+      const { title, content, comments } = await api.getData()
+    
+      this.store.makeRead(Number(id));
+      this.setTemplateData("comments", this.makeComment(comments));
+      this.setTemplateData("currentPage", String(this.store.currentPage));
+      this.setTemplateData("title", title);
+      this.setTemplateData("content", content);
   
       this.updateView()
     }
